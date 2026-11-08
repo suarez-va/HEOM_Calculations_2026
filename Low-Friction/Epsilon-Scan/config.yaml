@@ -13,9 +13,9 @@ system:
 
 grids:
   epsilon:
-    start: 0
-    stop: 25          # exclusive
-    step: 1
+    start: -1.0
+    stop: 31.0          # exclusive
+    step: 0.5
 
 heom:
   KK: 1
@@ -40,4 +40,4 @@ dyn:
   nprint: 1
 
 runtime:
-  ncores: 9
+  ncores: 11

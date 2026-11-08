@@ -1,0 +1,43 @@
+# HEOM rate constant vs. electronic coupling (Delta) scan, at fixed driving force epsilon.
+#
+# All energies are given in units of 1/beta. The temperature below is chosen so that
+# beta = 1 a.u., which makes "beta*X" and "X" numerically equal - but the scripts still
+# multiply through by 1/beta explicitly so that changing T does not silently break anything.
+
+system:
+  temperature: 315774.6670514614   # K -> beta = 1 a.u.
+  Omega: 2.00                      # Brownian oscillator frequency   [1/beta]
+  Gamma: 2.00                      # Brownian oscillator damping     [1/beta]
+  Lambda: 12.0                     # reorganization energy scale     [1/beta]
+  epsilon: 0.0                     # driving force (fixed)          [1/beta]
+
+grids:
+  log10_Delta:         # electronic coupling: Delta = 10**(log10_Delta) / beta
+    start: -1.1
+    stop: 0.5           # inclusive
+    num: 17             # evenly spaced in log10 -> spacing 0.1
+
+heom:
+  KK: 1
+  LL: 20
+  spectral_density: 1              # 1 = Brownian oscillator (expansion has KK+2 terms)
+  truncation_scheme: 4
+  do_scale: 1
+  adm_tolerance: 0.0
+  adm_deriv_tolerance: 0.0
+  filter_after_steps: 1
+  do_zeroing: 0
+  num_threads: 1
+
+therm:
+  dt: 0.02
+  nsteps: 1001
+  nprint: 1000
+
+dyn:
+  dt: 0.01
+  nsteps: 2001
+  nprint: 1
+
+runtime:
+  ncores: 10
