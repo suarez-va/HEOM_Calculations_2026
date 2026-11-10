@@ -72,8 +72,9 @@ params = {
     "adm_tolerance":0.0, "adm_deriv_tolerance":0.0,
     "filter_after_steps":1,"do_zeroing":0,
     "num_threads":1,
+    "backend":"numba",   # "numba" (fast, needs numba) or "cpp" (original C++ derivatives)
 
-    # data management parameters 
+    # data management parameters
     "prefix":"heom_therm",
     "hdf5_output_level":0, "txt_output_level":0, "mem_output_level":4,
     "properties_to_save": ["timestep", "time", "denmat", "auxdenmat"],
@@ -95,16 +96,20 @@ with h5py.File(F"heom_therm/mem_data.hdf", 'r') as f:
 rho = np.array(rho)
 adm = np.array(adm)
 
-rho_init = CMATRIX(2,2);
-rho_init.set(0,0,rho[0,0]); rho_init.set(0,1,rho[0,1]);
-rho_init.set(1,0,rho[1,0]); rho_init.set(1,1,rho[1,1])
+if params["backend"] == "numba":
+    # the numba backend takes the numpy arrays directly
+    rho_init, adm_init = rho, adm
+else:
+    rho_init = CMATRIX(2,2);
+    rho_init.set(0,0,rho[0,0]); rho_init.set(0,1,rho[0,1]);
+    rho_init.set(1,0,rho[1,0]); rho_init.set(1,1,rho[1,1])
 
-adm_init = CMATRIXList()
-for n in range(adm.shape[0]):
-    rhon_init = CMATRIX(2,2);
-    rhon_init.set(0,0,adm[n,0,0]); rhon_init.set(0,1,adm[n,0,1]);
-    rhon_init.set(1,0,adm[n,1,0]); rhon_init.set(1,1,adm[n,1,1])
-    adm_init.append(rhon_init)
+    adm_init = CMATRIXList()
+    for n in range(adm.shape[0]):
+        rhon_init = CMATRIX(2,2);
+        rhon_init.set(0,0,adm[n,0,0]); rhon_init.set(0,1,adm[n,0,1]);
+        rhon_init.set(1,0,adm[n,1,0]); rhon_init.set(1,1,adm[n,1,1])
+        adm_init.append(rhon_init)
 
 compute.run_dynamics(params, Ham, rho_init, adm_init)
 

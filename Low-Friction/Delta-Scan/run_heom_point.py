@@ -115,6 +115,7 @@ def main():
         "adm_tolerance": h["adm_tolerance"], "adm_deriv_tolerance": h["adm_deriv_tolerance"],
         "filter_after_steps": h["filter_after_steps"], "do_zeroing": h["do_zeroing"],
         "num_threads": h["num_threads"],
+        "backend": h.get("backend", "cpp"),
 
         "prefix": "heom_therm",
         "hdf5_output_level": 0, "txt_output_level": 0, "mem_output_level": 4,
@@ -142,16 +143,20 @@ def main():
         rho = np.array(f["denmat/data"][-1, :, :])
         adm = np.array(f["auxdenmat/data"][-1, :, :, :])
 
-    rho_init = CMATRIX(2, 2)
-    rho_init.set(0, 0, rho[0, 0]); rho_init.set(0, 1, rho[0, 1])
-    rho_init.set(1, 0, rho[1, 0]); rho_init.set(1, 1, rho[1, 1])
+    if params["backend"] == "numba":
+        # the numba backend takes the numpy arrays directly
+        rho_init, adm_init = rho, adm
+    else:
+        rho_init = CMATRIX(2, 2)
+        rho_init.set(0, 0, rho[0, 0]); rho_init.set(0, 1, rho[0, 1])
+        rho_init.set(1, 0, rho[1, 0]); rho_init.set(1, 1, rho[1, 1])
 
-    adm_init = CMATRIXList()
-    for n in range(adm.shape[0]):
-        M = CMATRIX(2, 2)
-        M.set(0, 0, adm[n, 0, 0]); M.set(0, 1, adm[n, 0, 1])
-        M.set(1, 0, adm[n, 1, 0]); M.set(1, 1, adm[n, 1, 1])
-        adm_init.append(M)
+        adm_init = CMATRIXList()
+        for n in range(adm.shape[0]):
+            M = CMATRIX(2, 2)
+            M.set(0, 0, adm[n, 0, 0]); M.set(0, 1, adm[n, 0, 1])
+            M.set(1, 0, adm[n, 1, 0]); M.set(1, 1, adm[n, 1, 1])
+            adm_init.append(M)
 
     t0 = time.time()
     compute.run_dynamics(params, Ham, rho_init, adm_init)
@@ -181,6 +186,7 @@ def main():
         "P2t_final": float(P2t[-1]),
         "beta": beta, "nn_tot": int(nn_tot),
         "KK": h["KK"], "LL": h["LL"], "spectral_density": h["spectral_density"],
+        "backend": params["backend"],
         "t_therm_s": t_therm, "t_dyn_s": t_dyn,
     }
     with open("result.json", "w") as f:

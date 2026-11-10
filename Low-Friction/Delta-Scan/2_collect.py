@@ -80,6 +80,18 @@ kNAD = 2 * np.pi / Omega * Delta_fine**2 * np.exp(0.5 * beta * epsilon) \
        * iv(epsilon / Omega, 2 * Lambda * np.exp(-0.5 * beta * Omega) \
        / (Omega * (1 - np.exp(-beta * Omega))))
 
+# --- MASH-RPMD rates ---
+delta = np.array([10**(-1.1), 10**(-1.0), 10**(-0.9), 10**(-0.8), 10**(-0.7), 10**(-0.6), 10**(-0.5), 10**(-0.4), 10**(-0.3), 10**(-0.2), 10**(-0.1), 10**(0.0), 10**(0.1), 10**(0.2), 10**(0.3), 10**(0.4), 10**(0.5)])
+
+bo_classical_mk = np.array([1.549e-02, 1.571e-02, 1.603e-02, 1.644e-02, 1.700e-02, 1.771e-02, 1.862e-02, 1.989e-02, 2.157e-02, 2.388e-02, 2.704e-02, 3.150e-02, 3.798e-02, 4.740e-02, 6.211e-02, 8.462e-02, 11.75e-02])
+bo_classical_sk = np.array([0.008e-02, 0.008e-02, 0.007e-02, 0.008e-02, 0.009e-02, 0.010e-02, 0.010e-02, 0.010e-02, 0.012e-02, 0.011e-02, 0.012e-02, 0.016e-02, 0.019e-02, 0.027e-02, 0.043e-02, 0.099e-02, 0.562e-02])
+
+#mash_classical_mk = np.array([])
+#mash_classical_sk = np.array([])
+
+#mash_quantum_mk = np.array([])
+#mash_quantum_sk = np.array([])
+
 plt.rcParams.update({
 
     'figure.figsize': (6.0, 4.0),
@@ -107,10 +119,13 @@ plt.rcParams.update({
 fig, (ax1) = plt.subplots(1, 1, figsize=(6, 4))
 ax1.set_ylabel('$log(k\\beta\\hbar)$')
 ax1.set_xlabel('$\\log_{10}(\\beta\\Delta)$')
+ax1.set_xlim([-1.1, 0.5])
 #ax1.plot(ld_fine, np.log10(kMT * beta), color="darkred", lw=1.5, label="Marcus")
 ax1.plot(ld_fine, np.log10(kZUS * beta), color="darkorange", lw=1.5, label="Zusman")
 ax1.plot(ld_fine, np.log10(kNAD * beta), color="darkgreen", lw=1.5, label="Quantum")
-ax1.plot(ld, lk, "o", color="k", ms=5, label="HEOM")
+ax1.plot(ld, lk, color="k", lw=1.5, label="HEOM")
+#ax1.plot(ld, lk, "o", color="k", ms=5, label="HEOM")
+ax1.errorbar(np.log10(delta), np.log10(bo_classical_mk * beta), bo_classical_sk*beta / (bo_classical_mk * np.log(10)), fmt='o', markersize=5, linewidth=1.5, color='r', label=r'BOMD')
 ax1.legend(fontsize=9, loc='best', handletextpad=0.2)
 fig.tight_layout()
 png = os.path.join(grid_dir, "scan.png")
