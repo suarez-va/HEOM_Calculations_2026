@@ -27,7 +27,7 @@ heom:
   adm_deriv_tolerance: 0.0
   filter_after_steps: 1
   do_zeroing: 0
-  num_threads: 2
+  num_threads: 4                   # cores per scan point (local: taskset block, SLURM: --cpus-per-task)
   backend: numba                   # "numba" (fast, needs numba) or "cpp" (original C++ derivatives)
 
 therm:
@@ -41,4 +41,21 @@ dyn:
   nprint: 1
 
 runtime:
-  ncores: 7
+  ncores: 4                        # local only: TOTAL cores; runs ncores // num_threads points at once
+  grid_dir: delta_grid             # output directory (relative to this folder)
+
+# SLURM job array (1_submit_*_slurm.py): one array task per grid point, num_threads cores each.
+# Keys set to null are left out of the sbatch script.
+slurm:
+  job_name: HEOM 
+  partition: null
+  account: null
+  qos: null
+  time: "24:00:00"
+  mem: "16G"                       # per array task, i.e. per point
+  max_concurrent: null             # throttle: at most this many points running at once
+  extra_sbatch: []                 # extra lines, e.g. ["--constraint=intel", "--mail-type=FAIL"]
+  python: python3
+  setup: |                         # shell lines run on the compute node before python
+    # module load anaconda3
+    # source activate libra

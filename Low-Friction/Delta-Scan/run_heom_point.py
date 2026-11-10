@@ -20,21 +20,39 @@ import ctypes
 _libc = ctypes.CDLL("libc.so.6")
 _libc.mallopt(-3, 131072)   # M_MMAP_THRESHOLD - also disables the dynamic adjustment
 _libc.mallopt(-1, 131072)   # M_TRIM_THRESHOLD
-_libc.mallopt(-8, 2)        # M_ARENA_MAX - one process per core, so keep arenas minimal
+_libc.mallopt(-8, 2)        # M_ARENA_MAX - many processes per node, so keep arenas minimal
 
-# One thread per process; the scan itself is the parallelism. Must precede numpy/scipy import.
+# Threads per point: --num-threads if given, else heom.num_threads from the config. Has to be
+# known before numpy/scipy/numba are imported, hence the early pre-parse of the command line.
 import os
-for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
-           "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"):
-    os.environ[_v] = "1"
-
 import sys
 import json
 import time
 import argparse
 
-import numpy as np
 import yaml
+
+script_dir = os.path.dirname(os.path.abspath(__file__))
+
+# Only when run as a script: the driver/collector also import this module for its grid function.
+if __name__ == "__main__":
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--idx", type=int, required=True, help="index into the scan grid")
+    ap.add_argument("--config", default=None)
+    ap.add_argument("--num-threads", type=int, default=None,
+                    help="cores for this point (default: heom.num_threads from the config)")
+    args = ap.parse_args()
+
+    cfg_path = args.config or os.path.join(script_dir, "config.yaml")
+    with open(cfg_path) as f:
+        cfg = yaml.safe_load(f)
+
+    num_threads = int(args.num_threads if args.num_threads is not None else cfg["heom"]["num_threads"])
+    for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
+               "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"):
+        os.environ[_v] = str(num_threads)
+
+import numpy as np
 import h5py
 
 if sys.platform == "cygwin":
@@ -55,16 +73,6 @@ def log10_delta_grid(cfg):
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--idx", type=int, required=True, help="index into the log10(beta*Delta) grid")
-    ap.add_argument("--config", default=None)
-    args = ap.parse_args()
-
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    cfg_path = args.config or os.path.join(script_dir, "config.yaml")
-    with open(cfg_path) as f:
-        cfg = yaml.safe_load(f)
-
     log10_delta_ar = log10_delta_grid(cfg)
     log10_delta = float(log10_delta_ar[args.idx])
 
@@ -82,7 +90,8 @@ def main():
     P1eq = np.exp(-0.5 * beta * epsilon) / (np.exp(-0.5 * beta * epsilon) + np.exp(0.5 * beta * epsilon))
     P2eq = np.exp(0.5 * beta * epsilon) / (np.exp(-0.5 * beta * epsilon) + np.exp(0.5 * beta * epsilon))
 
-    outdir = os.path.join(script_dir, "delta_grid", f"val{args.idx}")
+    grid_dir = os.path.join(script_dir, cfg.get("runtime", {}).get("grid_dir", "delta_grid"))
+    outdir = os.path.join(grid_dir, f"val{args.idx}")
     os.makedirs(outdir, exist_ok=True)
     os.chdir(outdir)
 
@@ -114,7 +123,7 @@ def main():
         "truncation_scheme": h["truncation_scheme"], "do_scale": h["do_scale"],
         "adm_tolerance": h["adm_tolerance"], "adm_deriv_tolerance": h["adm_deriv_tolerance"],
         "filter_after_steps": h["filter_after_steps"], "do_zeroing": h["do_zeroing"],
-        "num_threads": h["num_threads"],
+        "num_threads": num_threads,
         "backend": h.get("backend", "cpp"),
 
         "prefix": "heom_therm",
@@ -122,6 +131,11 @@ def main():
         "properties_to_save": ["timestep", "time", "denmat", "auxdenmat"],
         "use_compression": 0, "compression_level": [0, 0, 0],
     }
+
+    slurm = os.environ.get("SLURM_JOB_ID")
+    print(f"threads = {num_threads}   cores in affinity mask = {len(os.sched_getaffinity(0))}"
+          + (f"   SLURM job {slurm} task {os.environ.get('SLURM_ARRAY_TASK_ID')} "
+             f"on {os.uname().nodename}" if slurm else ""), flush=True)
 
     nn_tot = compute_nn_tot(2 * (h["KK"] + (2 if h["spectral_density"] == 1 else 1)), h["LL"])
     print(f"nn_tot = {nn_tot}", flush=True)
@@ -186,7 +200,7 @@ def main():
         "P2t_final": float(P2t[-1]),
         "beta": beta, "nn_tot": int(nn_tot),
         "KK": h["KK"], "LL": h["LL"], "spectral_density": h["spectral_density"],
-        "backend": params["backend"],
+        "backend": params["backend"], "num_threads": num_threads,
         "t_therm_s": t_therm, "t_dyn_s": t_dyn,
     }
     with open("result.json", "w") as f:

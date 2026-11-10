@@ -2,7 +2,8 @@
 Collect the per-point result.json files into one table and plot log10(beta*k) vs beta*epsilon,
 alongside the Marcus and Zusman reference rates.
 
-    python3 2_collect.py
+    python3 2_collect.py                            # config.yaml
+    python3 2_collect.py --config config_smoke.yaml  # results of a test scan
 
 Writes eps_grid/results.csv and eps_grid/scan.png. Points that have not finished yet are
 reported as missing rather than silently omitted, so a partial scan is obvious.
@@ -10,6 +11,7 @@ reported as missing rather than silently omitted, so a partial scan is obvious.
 
 import os
 import csv
+import argparse
 import json
 
 import numpy as np
@@ -23,10 +25,14 @@ from libra_py import units
 from run_heom_point import epsilon_grid
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
-grid_dir = os.path.join(script_dir, "eps_grid")
 
-with open(os.path.join(script_dir, "config.yaml")) as f:
+ap = argparse.ArgumentParser()
+ap.add_argument("--config", default="config.yaml", help="same config the scan was run with")
+args = ap.parse_args()
+cfg_path = args.config if os.path.isabs(args.config) else os.path.join(script_dir, args.config)
+with open(cfg_path) as f:
     cfg = yaml.safe_load(f)
+grid_dir = os.path.join(script_dir, cfg.get("runtime", {}).get("grid_dir", "eps_grid"))
 
 beta_eps_ar = epsilon_grid(cfg)
 T = cfg["system"]["temperature"]
