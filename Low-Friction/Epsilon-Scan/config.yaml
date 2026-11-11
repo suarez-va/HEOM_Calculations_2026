@@ -40,6 +40,14 @@ dyn:
   nsteps: 1001
   nprint: 1
 
+# Rate from a line fit: beta*hbar*k = slope of K2(t) = -P2eq ln|1 - P2(t)/P2eq| vs t/(beta*hbar)
+# over [fitmin, fitmax], in units of t/(beta*hbar) (the dyn leg ends at (nsteps-1)*dt = 10).
+# 2_collect.py --fitmin/--fitmax refits from the saved trajectories without rerunning HEOM.
+# k_HEOM (last point of k(t)) is still reported alongside.
+rate:
+  fitmin: 5.0
+  fitmax: 10.0
+
 runtime:
   ncores: 10                       # local only: TOTAL cores; runs ncores // num_threads points at once
   grid_dir: eps_grid               # output directory (relative to this folder)

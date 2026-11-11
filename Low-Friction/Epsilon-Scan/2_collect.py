@@ -7,6 +7,11 @@ alongside the Marcus and Zusman reference rates.
 
 Writes eps_grid/results.csv and eps_grid/scan.png. Points that have not finished yet are
 reported as missing rather than silently omitted, so a partial scan is obvious.
+
+Two HEOM rates per point: k_fit, the slope of a line fit of K2(t) = -P2eq ln|1 - P2/P2eq| over
+[fitmin, fitmax] (config `rate:` block), and k_HEOM, the last point of k(t) (shown faded).
+    python3 2_collect.py --fitmin 5 --fitmax 15   # refit from the saved trajectories, no HEOM rerun
+    python3 2_collect.py --plot-fits              # also write fits.png: K2(t) + fit for every point
 """
 
 import os
@@ -22,12 +27,15 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from libra_py import units
-from run_heom_point import epsilon_grid
+from run_heom_point import epsilon_grid, fit_window, refit_rows, plot_fits
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--config", default="config.yaml", help="same config the scan was run with")
+ap.add_argument("--fitmin", type=float, default=None, help="K2 fit window start, t/(beta*hbar) (default: config rate.fitmin)")
+ap.add_argument("--fitmax", type=float, default=None, help="K2 fit window end, t/(beta*hbar) (default: config rate.fitmax)")
+ap.add_argument("--plot-fits", action="store_true", help="also write fits.png (K2(t) and its fit, per point)")
 args = ap.parse_args()
 cfg_path = args.config if os.path.isabs(args.config) else os.path.join(script_dir, args.config)
 with open(cfg_path) as f:
@@ -59,8 +67,17 @@ if not rows:
 
 rows.sort(key=lambda r: r["beta_epsilon"])
 
+# K2 line-fit rate: reuse result.json's fit if it used this window, else refit from the trajectory
+fitmin, fitmax = fit_window(cfg)
+fitmin = args.fitmin if args.fitmin is not None else fitmin
+fitmax = args.fitmax if args.fitmax is not None else fitmax
+nofit = refit_rows(rows, grid_dir, fitmin, fitmax)
+if nofit:
+    print(f"WARNING: no saved trajectory for point(s) {nofit} - no K2 fit for them")
+
 csv_path = os.path.join(grid_dir, "results.csv")
 fields = ["idx", "beta_epsilon", "epsilon", "k_HEOM", "log10_beta_k_HEOM",
+          "k_fit", "log10_beta_k_fit", "fit_r", "fit_npts", "fitmin", "fitmax",
           "P2eq", "P2t_final", "nn_tot", "KK", "LL", "t_therm_s", "t_dyn_s"]
 with open(csv_path, "w", newline="") as f:
     w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
@@ -71,6 +88,8 @@ print(f"wrote {csv_path}  ({len(rows)} points)")
 be = np.array([r["beta_epsilon"] for r in rows])
 lk = np.array([np.nan if r["log10_beta_k_HEOM"] is None else r["log10_beta_k_HEOM"]
                for r in rows])
+lkf = np.array([np.nan if r["log10_beta_k_fit"] is None else r["log10_beta_k_fit"]
+                for r in rows])
 
 # --- reference rate theories, on a fine grid for smooth curves ---
 bemin = be.min()
@@ -124,24 +143,29 @@ ax1.set_ylabel('$log(k\\beta\hbar)$')
 ax1.set_xlabel('$\epsilon/\lambda$')
 ax1.set_ylim([-5.25, -2.75])
 ax1.set_xlim([-0.05, 2.55])
-#ax1.plot(eps_fine / Lambda, np.log10(kMT * beta), color="darkred", lw=1.5, label="Marcus")
-ax1.plot(eps_fine / Lambda, np.log10(kZUS * beta), color="darkorange", lw=1.5, label="Zusman")
-ax1.plot(eps_fine / Lambda, np.log10(kNAD * beta), color="darkgreen", lw=1.5, label="Quantum")
-ax1.plot(be / (beta * Lambda), lk, "o", color="k", ms=5, label="HEOM")
-#ax1.plot(be / (beta * Lambda), lk, ls='-', color="k", lw=1.5, label="HEOM")
+ax1.plot(eps_fine / Lambda, np.log10(kMT * beta), color="darkred", lw=1.5, label="Marcus")
+#ax1.plot(eps_fine / Lambda, np.log10(kZUS * beta), color="darkorange", lw=1.5, label="Zusman")
+#ax1.plot(eps_fine / Lambda, np.log10(kNAD * beta), color="darkgreen", lw=1.5, label="Quantum")
+ax1.plot(be / (beta * Lambda), lkf, color="k", lw=1.5, label=f"HEOM") #($K_2$ fit [{fitmin:g},{fitmax:g}])
+#ax1.plot(be / (beta * Lambda), lk, color="k", lw=1.5, label="HEOM") #(last $k(t)$)
 ax1.errorbar(epsil / Lambda, np.log10(mash_classical_mk), mash_classical_sk / (mash_classical_mk * np.log(10)), fmt='o', markersize=5, linewidth=1.5, color='r', label=r'MASH')
 ax1.errorbar(epsil / Lambda, np.log10(mash_quantum_mk), mash_quantum_sk / (mash_quantum_mk * np.log(10)), fmt='o', markersize=5, linewidth=1.5, color='b', label=r'MASH-RPMD')
-#ax1.plot(be / (beta * Lambda), lk+0.01, color="k", label="HEOMd")
-#ax1.plot(be / (beta * Lambda), lk-0.01, color="k", label="HEOMdd")
 ax1.legend(fontsize=9, loc='best', handletextpad=0.2)
 fig.tight_layout()
 png = os.path.join(grid_dir, "scan.png")
 fig.savefig(png)
 print(f"wrote {png}")
 
-print(f"\n{'beta*eps':>9} {'log10(beta k)':>14} {'P2t_final':>11} {'P2eq':>9} {'t_dyn':>8}")
+print(f"\nK2 fit window: t/(beta*hbar) = [{fitmin:g}, {fitmax:g}]")
+print(f"\n{'beta*eps':>9} {'log10(bk) fit':>14} {'fit r':>7} {'log10(bk) last':>15} "
+      f"{'P2t_final':>11} {'P2eq':>9} {'t_dyn':>8}")
 for r in rows:
-    v = r["log10_beta_k_HEOM"]
-    print(f"{r['beta_epsilon']:>9.1f} {('%.5f' % v) if v is not None else 'k<=0':>14} "
+    vf, v = r["log10_beta_k_fit"], r["log10_beta_k_HEOM"]
+    print(f"{r['beta_epsilon']:>9.1f} {('%.5f' % vf) if vf is not None else 'n/a':>14} "
+          f"{('%.4f' % r['fit_r']) if r.get('fit_r') is not None else 'n/a':>7} "
+          f"{('%.5f' % v) if v is not None else 'k<=0':>15} "
           f"{r['P2t_final']:>11.6f} {r['P2eq']:>9.6f} {r['t_dyn_s']:>7.0f}s")
+
+if args.plot_fits:
+    print(f"wrote {plot_fits(rows, grid_dir, fitmin, fitmax, 'beta_epsilon', 'beta*eps = {:g}')}")
 
